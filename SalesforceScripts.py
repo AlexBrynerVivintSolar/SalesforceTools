@@ -16,8 +16,6 @@ from simple_salesforce import *
 
 ###################################################################################################
 
-# SolarInt Api Login
-
 sf = Salesforce(username='', password='', security_token='', sandbox=, client_id='')
 
 os.environ['SALESFORCE_USERNAME'] = ''
