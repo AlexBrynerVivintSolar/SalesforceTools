@@ -48,7 +48,7 @@ def SFNulls(df, FillWith='#N/A'):
         df[col] = df[col].replace(0, np.NAN).fillna('%s' % FillWith)
 
 
-def SFQuery(SOQL: str, InList=None, CheckParentChild=True):
+def SFQuery(SOQL: str, InList=None, LowerHeaders=False, CheckParentChild=True, KeepAttributes=False):
     """
         Description: Queries Salesforce returning all results in a pandas dataframe.  This also sets all possible data types to numbers and sets column headers to lower case. If using InList, this functionality is built with pandas dataframe columns in mind to help simplify filtering from other SOQL results.
         Parameters:
@@ -60,9 +60,11 @@ def SFQuery(SOQL: str, InList=None, CheckParentChild=True):
                 Can also write out additional WHERE statements preceding the InList.
                 EX: SFQuery("SELECT Id, Name From Account WHERE Name = 'Alex' and Id IN", IdsList)
                 InList format - ['id1', 'id2', 'id2', 'id3', 'id3', 'id4', 'id5'] becomes ('id1', 'id2', 'id3', 'id4', 'id5')
+            LowerHeader = Returns Dataframe with column headers lowercase
             CheckParentChild = This checks for the relationships by looking for the ordered dictionaries returned by Salesforce.  It loops through to ensure reached the end of the line if stepping through multiple parent relationships.  Turn off if queries need to run slighly faster.
             
-            InList** - This is not an efficent use of api calls.  Nested Select statements in the where clause is a more efficent use for api calls but there are always tradeoffs, just know that if you are short on RestApi calls, using this method could be a contributing factor.  At some point it would make more sense to utilize tuples, but unfortunately salesforce did not like the last , 
+            
+            InList* - This is not an efficent use of api calls.  Nested Select statements in the where clause is a more efficent use for api calls but there are always tradeoffs.  At some point it would make more sense to utilize tuples, but unfortunately salesforce did not like the last comma.  
     """
     def basicSOQL(SOQLstr : str):
         # formats the Salesforce ordered dictionary into a pandas dataframe
@@ -70,6 +72,8 @@ def SFQuery(SOQL: str, InList=None, CheckParentChild=True):
             od = sf.query_all("%s" % SOQLstr)
             items = {val: dict(od['records'][val]) for val in range(len(od['records'])) } 
             res = DataFrame.from_dict(items, orient='index')
+            if LowerHeaders == True:
+                res.columns = map(str.lower, res.columns)
             return res.apply(lambda s: pd.to_numeric(s, errors='ignore'))
         except ValueError:
             pass
@@ -145,6 +149,10 @@ def SFQuery(SOQL: str, InList=None, CheckParentChild=True):
         InList = list(InList)
         rs = InListQuery(SOQL, InList)
     
+    # Drops the attributes column passed through by Salesforce
+    if CheckParentChild == False and KeepAttributes == False:
+        rs = rs.drop(['attributes'], axis=1)
+        
     while CheckParentChild:
         CheckParentChild = False
 
@@ -158,8 +166,8 @@ def SFQuery(SOQL: str, InList=None, CheckParentChild=True):
                     continue
                 try:
                     if rs[col][i].get('type') != None and col == 'attributes':
-                        rs = rs.drop([col], axis=1)
-                        dropAttributes = False
+                        if KeepAttributes == False:
+                            rs = rs.drop([col], axis=1)
                         break
                 except AttributeError:
                     indexCols.append(col)
@@ -183,15 +191,16 @@ def SFQuery(SOQL: str, InList=None, CheckParentChild=True):
 
             elif relationship == 'Parent' and obj != None:
                 fields = []
-                objType = rs[col][0].get('attributes').get('type')
                 for i in range(len(rs[col])):
                     if rs[col][i] != None:
                         fields.extend(list(rs[col][i].keys()))
                         fields = list(set(fields))
-                try:
-                    fields.remove('attributes')
-                except ValueError:
-                    pass
+                        
+                if KeepAttributes == False:
+                    try:
+                        fields.remove('attributes')
+                    except ValueError:
+                        pass
                 for field in fields:
                     rs[obj + '.' + field] = rs.apply(lambda row: getParentRecords(field, row[col]), axis=1)
                 rs = rs.drop([col], axis=1)
@@ -202,17 +211,6 @@ def SFQuery(SOQL: str, InList=None, CheckParentChild=True):
         # print(indexCols)
     return rs
         
-def SFSearch(SearchStr):  
-    """
-    Parameters:
-        SearchStr - SOSL Search Query String
-            example - "FIND {9999999999} IN ALL FIELDS"
-    """
-    od = sf.search("%s" % SearchStr)
-    items = {val: {'SObject':od['searchRecords'][val]['attributes']['type'],'Id':od['searchRecords'][val]['Id']} for val in range(len(od['searchRecords'])) }
-    rs = DataFrame.from_dict(items, orient='index')
-    return rs.apply(lambda s: pd.to_numeric(s, errors='ignore'))
-
            
 def SFFormat(df, SObject, EnforceNulls=False):
     """
