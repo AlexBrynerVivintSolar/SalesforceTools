@@ -45,23 +45,21 @@ def SFNulls(df, FillWith='#N/A'):
         df[col] = df[col].replace(0, np.NAN).fillna('%s' % FillWith)
 
 
-def SFQuery(SOQL: str, InList=None, LowerHeaders=False, CheckParentChild=True, KeepAttributes=False):
+def SFQuery(SOQL: str, InList=None, LowerHeaders=True, CheckParentChild=True, KeepAttributes=False):
     """
         Description: Queries Salesforce returning all results in a pandas dataframe.  This also sets all possible data types to numbers and sets column headers to lower case. If using InList, this functionality is built with pandas dataframe columns in mind to help simplify filtering from other SOQL results.
         Parameters:
             SOQL = Salesforce SOQL Statement
             InList* = List of items for an "IN" filter. Apex SOQL - "SELECT Id, Name FROM Account Where Id IN :ids"
-                InList filters dups and formats the list for SOQL, and splits up the list into smaller chuncks if needed. 
                 SOQL parameter must be written out to the point where the : would be set in a SOQL query in Apex.
-                EX: SFQuery("SELECT Id, Name FROM Account WHERE Id IN", IdsList)
-                Can also write out additional WHERE statements preceding the InList.
-                EX: SFQuery("SELECT Id, Name From Account WHERE Name = 'Alex' and Id IN", IdsList)
+                EX: SFQuery("SELECT Id, Name From Contact WHERE FirstName = 'Alex' and Id IN", IdsList)
                 InList format - ['id1', 'id2', 'id2', 'id3', 'id3', 'id4', 'id5'] becomes ('id1', 'id2', 'id3', 'id4', 'id5')
-            LowerHeader = Returns Dataframe with column headers lowercase
+                I usually use this with a dataframe column.  
+                ex: "SFQuery("Select Id, Name From Contact Where Id In", InList=list(your_dataframe['column_name']))
+            LowerHeader = Returns Dataframe with column headers lowercase, defaulted true for previous projects
             CheckParentChild = This checks for the relationships by looking for the ordered dictionaries returned by Salesforce.  It loops through to ensure reached the end of the line if stepping through multiple parent relationships.  Turn off if queries need to run slighly faster.
             
-            
-            InList* - This is not an efficent use of api calls.  Nested Select statements in the where clause is a more efficent use for api calls but there are always tradeoffs.  At some point it would make more sense to utilize tuples, but unfortunately salesforce did not like the last comma.  
+            InList* - This is not an efficent use of api calls.  There are limitations to the length of the queries so this is capped out at a default of 300 elements.  Nested Select statements in the where clause is a more efficent use for api calls but there are always tradeoffs.  At some point it would make more sense to utilize tuples, but unfortunately salesforce did not like the format with the last comma.
     """
     def basicSOQL(SOQLstr : str):
         # formats the Salesforce ordered dictionary into a pandas dataframe
@@ -167,22 +165,22 @@ def SFQuery(SOQL: str, InList=None, LowerHeaders=False, CheckParentChild=True, K
                             rs = rs.drop([col], axis=1)
                         break
                 except AttributeError:
-                    indexCols.append(col)
+                    indexCols.append(col) # will use this later for creating a multi indexed dataframe
                     break
 
                 # Determines whether parent or child query and the object type
                 try:
                     obj = rs[col][i].get('attributes').get('type')
+                    relationship = 'Parent'
                 except:
                     pass
                 try:
                     obj = rs[col][i].get('records')[0].get('attributes').get('type')
+                    relationship = 'Child'
                 except:
                     pass
-                relationship = 'Child' if rs[col][i].get('totalSize') != None else 'Parent'
                 break
-
-
+                
             if relationship == 'Child' and obj != None:
                 rs[col] = rs.apply(lambda row: getChildRecords(obj, row[col]), axis=1)
 
@@ -223,7 +221,9 @@ def SFFormat(df, SObject, EnforceNulls=False):
     InvalidDataError = ''
     
     df.columns = map(str.lower, df.columns)
+    
     fieldDict = getattr(sf, '%s' % SObject).describe()["fields"]
+    
     numFields = len(fieldDict)
     
     NumCol = df.columns.values.tolist()
@@ -242,17 +242,14 @@ def SFFormat(df, SObject, EnforceNulls=False):
                 except ValueError: 
                     InvalidDataError += ("Invalid "+dtype+" : "+col+"\n")
                 break
-                
             i += 1
             if i >= numFields:
                 NoFieldError += (SObject+" does not contain : "+col+"\n")
                 
     SFNulls(df)
-    
     if EnforceNulls == False:
         for col in NumCol:
             df[col] = df[col].replace('#N/A','')
-    
     errors = NoFieldError+InvalidDataError
     if len(errors) > 0:
         return(errors)
@@ -262,7 +259,7 @@ def SFFormat(df, SObject, EnforceNulls=False):
     
 def SFUpload(df, UploadType, Sobject, batchSize=49995, hangtime=0):
     """
-        Description: Upload a pandas dataframe through the Salesforce Bulk API in batches of 49995 (5 batches of 9999). Can run either an insert or update to the listed Sobject.  Sobject and UploadType must be listed as a string. ex: 'Update', 'Account'  
+        Description: Upload a pandas dataframe through the Salesforce Bulk API in batches of 50k. Can run either an insert or update to the listed Sobject.  Sobject and UploadType must be listed as a string. ex: 'Update', 'Account'  
         Parameters:
             df         = Pandas.DataFrame
             UploadType = Update or Insert
@@ -288,8 +285,8 @@ def SFUpload(df, UploadType, Sobject, batchSize=49995, hangtime=0):
         startRow = endRow
         endRow = startRow + batchSize
         time.sleep(hangtime)
-        
-
+    
+    
 def SFBulkQuery(SObject, SOQL):
     """
         Description: Runs a query through the bulk api.  Creates, Tracks, and Closes the Request and returns the results as a Pandas Dataframe.  Currently there are lots of slighly obnoxious messages to help with tracking the current status.
