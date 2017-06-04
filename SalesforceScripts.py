@@ -221,9 +221,7 @@ def SFFormat(df, SObject, EnforceNulls=False):
     InvalidDataError = ''
     
     df.columns = map(str.lower, df.columns)
-    
     fieldDict = getattr(sf, '%s' % SObject).describe()["fields"]
-    
     numFields = len(fieldDict)
     
     NumCol = df.columns.values.tolist()
@@ -233,7 +231,6 @@ def SFFormat(df, SObject, EnforceNulls=False):
             if x['name'].lower() == col:
                 dtype = x['type']
                 length = x['length']
-                
                 try:
                     if dtype == 'date':
                         df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d').replace(to_replace='NaT', value='#N/A') 
