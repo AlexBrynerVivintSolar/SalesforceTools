@@ -15,14 +15,9 @@ from simple_salesforce import *
 # Salesforce Credentials
 
 ###################################################################################################
-
+# Creates SimpleSalesforce Login Instance
 sf = Salesforce(username='', password='', security_token='', sandbox=, client_id='')
 
-os.environ['SALESFORCE_USERNAME'] = ''
-os.environ['SALESFORCE_PASSWORD'] = ''
-os.environ['SALESFORCE_SECURITY_TOKEN'] = ''
-os.environ['SALESFORCE_INSTANCE'] = ""
-os.environ['SALESFORCE_SANDBOX'] = ''
 ###################################################################################################
 
 ###################################################################################################
@@ -295,7 +290,7 @@ def SFUpload(df, UploadType, Sobject, batchSize=49995, hangtime=0):
 
         Headers = upload.columns.tolist()
         Data = upload.to_records(index=False)
-        job = SalesforceBulkJob(UploadType, Sobject)
+        job = SalesforceBulkJob(UploadType, Sobject, salesforce=sf)
         job.upload(Headers,Data)
 
         startRow = endRow
