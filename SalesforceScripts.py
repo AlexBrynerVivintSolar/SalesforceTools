@@ -8,6 +8,7 @@ from time import sleep, gmtime, strftime
 from pandas import DataFrame, Series, read_csv
 
 from salesforce_bulk_api import SalesforceBulkJob
+from SalesforceBulkQuery import *
 from simple_salesforce import *
 
 ###################################################################################################
@@ -294,3 +295,20 @@ def SFUpload(df, UploadType, Sobject, batchSize=49995, hangtime=0):
         startRow = endRow
         endRow = startRow + batchSize
         time.sleep(hangtime)
+        
+
+def SFBulkQuery(SObject, SOQL):
+    """
+        Description: Runs a query through the bulk api.  Creates, Tracks, and Closes the Request and returns the results as a Pandas Dataframe.  Currently there are lots of slighly obnoxious messages to help with tracking the current status.
+        Parameters:
+            SObject = Salesforce Object, ex: Account, Contact
+            SOQL    = Salesforce SOQL Statement for bulk query
+    """
+    sfbulk = SalesforceBulk(sessionId=sf.session_id, host=sf.sf_instance)
+    job = sfbulk.create_query_job(SObject, contentType='CSV')
+    batch = sfbulk.query(job, SOQL)
+    while not sfbulk.is_batch_done(job, batch):
+        time.sleep(10)
+    sfbulk.close_job(job)
+    res = sfbulk.get_batch_result_iter(job, batch)
+    return res
