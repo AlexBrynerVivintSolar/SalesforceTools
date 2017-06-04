@@ -1,5 +1,4 @@
 # coding: utf-8
-import os
 import numpy as np
 import pandas as pd
 import time
@@ -269,7 +268,7 @@ def SFFormat(df, SObject, EnforceNulls=False):
     
 def SFUpload(df, UploadType, Sobject, batchSize=49995, hangtime=0):
     """
-        Description: Upload a pandas dataframe through the Salesforce Bulk API in batches of 50k. Can run either an insert or update to the listed Sobject.  Sobject and UploadType must be listed as a string. ex: 'Update', 'Account'  
+        Description: Upload a pandas dataframe through the Salesforce Bulk API in batches of 49995 (5 batches of 9999). Can run either an insert or update to the listed Sobject.  Sobject and UploadType must be listed as a string. ex: 'Update', 'Account'  
         Parameters:
             df         = Pandas.DataFrame
             UploadType = Update or Insert
