@@ -15,6 +15,8 @@ from simple_salesforce import *
 # Salesforce Credentials
 
 # Creates SimpleSalesforce Login Instance
+# 
+# sandbox - boolean
 sf = Salesforce(username='', password='', security_token='', sandbox=, client_id='')
 
 ###################################################################################################
