@@ -17,6 +17,8 @@ from simple_salesforce import *
 # Creates SimpleSalesforce Login Instance
 sf = Salesforce(username='', password='', security_token='', sandbox=, client_id='')
 
+def reAuth():
+    sf = Salesforce(username='', password='', security_token='', sandbox=, client_id='')
 ###################################################################################################
 
 def getBlankDF():
@@ -299,3 +301,75 @@ def SFBulkQuery(SObject, SOQL):
     sfbulk.close_job(job)
     res = sfbulk.get_batch_result_iter(job, batch)
     return res
+
+
+def hoarkEmails(SObject, batchSize=49995, hangTime=0):
+    """
+        Description: Pulls SObject MetaData and queries email fields.  Replaces @ with = and adds @example.com to the end of the email to prevent sending accidental emails. (Generally intended for sandboxes)  Ex: alex@gmail.com -> alex=gmail.com@example.com
+        Parameters:
+            SObject   = Salesforce Object Api Name, ex: Account, Contact
+            batchSize = Size for Bulk Uploads
+            hangTime  = Time in seconds to wait between uploads
+    """
+    def hoarkEmail(x):
+        x = str(x)
+        if '@example.com' in x:
+            x = ''
+        if x != '' and '@' in x and '@example.com' not in x:
+            x = x.replace('@','=')
+            x = x + '@example.com'
+        return x
+    
+    fieldDict = getattr(sf, '%s' % SObject).describe()["fields"]
+    
+    emailFields = []
+    for field in fieldDict:
+        if field['type'] == 'email':
+            emailFields.append(field['name'])
+            
+    soqlSelect = 'SELECT Id'
+    soqlFrom = ' FROM %s' % SObject
+    soqlWhere = ' WHERE'
+
+    if len(emailFields) > 0:
+        for i in range(0,len(emailFields)):
+            soqlSelect += ', %s' % emailFields[i]
+            if i == 0:
+                soqlWhere += ' %s != Null' % emailFields[i]
+            else:
+                soqlWhere += ' OR %s != Null' % emailFields[i]
+                
+                
+        soqlStr = soqlSelect + soqlFrom + soqlWhere
+        print('Query : {0}'.format(soqlStr))
+        res = SFQuery(soqlStr, LowerHeaders=False)
+        res.to_pickle('HoarkinEmails_{0}.p'.format(SObject))
+        print('Total Number of {0}\'s : {1}'.format(SObject, len(res)))
+        
+        SFNulls(res, FillWith='')
+        res = res.applymap(hoarkEmail)
+
+        res['allEmails'] = ''
+        for field in emailFields:
+            res['allEmails'] = res['allEmails'].astype(str) + res[field].astype(str)
+        res = res[res['allEmails'] != ''].drop(labels=['allEmails'], axis=1).reset_index(drop=True)
+        
+        print('Number of {0}\'s to Update : {1}'.format(SObject, len(res)))
+
+        startPoint = 0
+        endPoint = batchSize
+        i = 0
+        while startPoint < len(res):
+            temp = res[startPoint:endPoint]
+
+            print('Uploading {0}s Round : {1}'.format(SObject, i))
+            SFUpload(temp, 'update', SObject, batchSize=batchSize, hangtime=hangTime)
+            print('Uploaded {0}s Round : {1}'.format(SObject, i))
+
+            startPoint += batchSize
+            endPoint += batchSize
+            i += 1
+            
+            reAuth()
+    else:
+        print('No Email Fields in {0}'.format(SObject))
